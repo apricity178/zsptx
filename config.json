@@ -1,0 +1,14 @@
+{
+  "title": "打卡提醒",
+  "morningTime": "08:00",
+  "eveningTime": "19:55",
+  "morningContent": "",
+  "eveningContent": "",
+  "specialDates": {
+    "myBirthday": "10-23",
+    "herBirthday": "09-27",
+    "anniversary": "2025-08-20"
+  },
+  "locationId": "101181502",
+  "tokens": ""
+}

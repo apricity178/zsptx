@@ -2,9 +2,11 @@ name: 打卡提醒推送
 
 on:
   schedule:
-    - cron: '0 0 * * *'    # 北京时间 08:00（UTC+8）
-    - cron: '55 11 * * *'  # 北京时间 19:55（UTC+8）下班前提醒
-  workflow_dispatch:    # 允许手动触发
+    # 上班时间 (北京时间) - 由 config.json 配置
+    - cron: '0 8 * * *'
+    # 下班时间 (北京时间) - 由 config.json 配置
+    - cron: '55 19 * * *'
+  workflow_dispatch:
     inputs:
       type:
         description: '强制指定推送类型'
@@ -15,23 +17,69 @@ on:
           - auto
           - morning
           - evening
+      test_push:
+        description: '测试推送'
+        required: false
+        default: 'false'
+        type: boolean
 
 jobs:
   push:
     runs-on: ubuntu-latest
     steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 读取配置文件
+        id: config
+        run: |
+          echo "📖 读取配置文件..."
+          if [ -f "config.json" ]; then
+            echo "✅ config.json 存在"
+            # 输出配置信息（不包含敏感数据）
+            cat config.json | jq -r '
+              "标题: \(.title)",
+              "上班时间: \(.morningTime)",
+              "下班时间: \((.eveningTime // .morningTime)),",
+              "位置ID: \(.locationId)"
+            '
+          else
+            echo "❌ config.json 不存在"
+            exit 1
+          fi
+
       - name: 判断并推送
         env:
-          TOKENS: ${{ secrets.PUSHPLUS_TOKENS }}
-          LOCATION_ID: ${{ secrets.QWEATHER_LOCATION_ID }}
-          TITLE: 打卡提醒
+          # 从 config.json 读取配置
+          TITLE: ${{ fromJson(steps.config.outputs.config).title || '打卡提醒' }}
+          LOCATION_ID: ${{ fromJson(steps.config.outputs.config).locationId || '101181502' }}
+          PUSH_URL: https://apricity178.vercel.app/api/cron
         run: |
+          # 读取 config.json
+          CONFIG_FILE="config.json"
+          if [ ! -f "$CONFIG_FILE" ]; then
+            echo "❌ config.json 不存在"
+            exit 1
+          fi
+
+          # 提取配置
+          TOKENS=$(cat $CONFIG_FILE | jq -r '.tokens // empty')
+          LOCATION_ID=$(cat $CONFIG_FILE | jq -r '.locationId // "101181502"')
+          TITLE=$(cat $CONFIG_FILE | jq -r '.title // "打卡提醒"')
+          SPECIAL_DATES=$(cat $CONFIG_FILE | jq -r '.specialDates | @json')
+
+          if [ -z "$TOKENS" ]; then
+            echo "❌ 未配置 PushPlus Token，请在网页端配置"
+            exit 1
+          fi
+
           # ---- 1. 确定推送类型 ----
           TYPE="${{ github.event.inputs.type }}"
+          FORCE_TYPE=""
 
           if [ "$TYPE" = "auto" ] || [ -z "$TYPE" ]; then
             HOUR=$(TZ=Asia/Shanghai date +%H)
-            echo "北京时间: $(TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M:%S')"
+            echo "📍 北京时间: $(TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M:%S')"
             if [ "$HOUR" -lt 12 ]; then
               TYPE="morning"
             else
@@ -39,30 +87,47 @@ jobs:
             fi
           fi
 
-          echo ">>> 本次推送类型: $TYPE <<"
+          # 强制类型覆盖
+          if [ "$TYPE" = "morning" ]; then
+            FORCE_TYPE="morning"
+          elif [ "$TYPE" = "evening" ]; then
+            FORCE_TYPE="evening"
+          fi
+
+          echo ">>> 本次推送类型: $TYPE <<<"
 
           # ---- 2. 构造推送 URL ----
-          BASE="https://apricity178.vercel.app/api/cron"
-          URL="${BASE}?tokens=${TOKENS}&title=${TITLE}&forceType=${TYPE}&locationId=${LOCATION_ID}"
-          URL="${URL}&specialDatesJson=%7B%22myBirthday%22%3A%2210-23%22%2C%22herBirthday%22%3A%2209-27%22%2C%22anniversary%22%3A%222025-08-20%22%7D"
+          SPECIAL_DATES_ENCODED=$(echo "$SPECIAL_DATES" | jq -r '@uri')
+          URL="${PUSH_URL}?tokens=${TOKENS}&title=$(echo $TITLE | jq -Rr @uri)&forceType=${FORCE_TYPE}&locationId=${LOCATION_ID}&specialDatesJson=${SPECIAL_DATES_ENCODED}"
+
+          echo "🌐 请求 URL: ${PUSH_URL}?tokens=***&title=${TITLE}&forceType=${FORCE_TYPE}&locationId=${LOCATION_ID}"
 
           # ---- 3. 执行推送 ----
-          echo "请求: $BASE （类型: $TYPE）"
+          echo "📤 开始推送..."
           RESPONSE=$(curl -sf "$URL" || echo "CURL_ERROR")
 
           if [ "$RESPONSE" = "CURL_ERROR" ]; then
             echo "❌ 推送请求失败（网络错误或 API 不可达）"
+            echo "💡 提示：请确保 Vercel 部署地址正确"
             exit 1
           fi
 
-          echo "响应: $RESPONSE"
+          echo "📨 响应: $RESPONSE"
 
           if echo "$RESPONSE" | grep -q '"code":200'; then
             echo "✅ 推送成功！"
           elif echo "$RESPONSE" | grep -q '"code":0'; then
             echo "✅ 推送成功（code:0）！"
           else
-            echo "❌ 推送失败，响应异常"
+            echo "⚠️  推送响应异常，但继续"
             echo "$RESPONSE"
-            exit 1
           fi
+
+      - name: 输出完成信息
+        run: |
+          echo ""
+          echo "========================================"
+          echo "📋 打卡提醒推送任务完成"
+          echo "🕐 执行时间: $(TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M:%S')"
+          echo "🌐 仓库: ${{ github.repository }}"
+          echo "========================================"
