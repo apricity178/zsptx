@@ -49,7 +49,7 @@ jobs:
 
       - name: 判断并推送
         env:
-          PUSH_URL: https://apricity178.vercel.app/api/cron
+          PUSH_URL: https://zsptx-a3yy.vercel.app/api/cron
         run: |
           # 读取 config.json
           CONFIG_FILE="config.json"
