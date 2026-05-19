@@ -587,19 +587,23 @@
                 </label>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
                     <div>
-                        <small style="opacity: 0.8;">🎂 你的生日（农历转公历月-日）</small>
-                        <input type="text" id="myBirthday" value="10-23" placeholder="如 10-23"
-                            style="font-size: 13px; padding: 6px 10px; border-radius: 8px; border: none; background: rgba(255,255,255,0.15); color: white; width: 100%;">
+                        <small style="opacity: 0.8;">🎂 老公生日（农历月份-日期）</small>
+                        <input type="text" id="myBirthdayLunar" placeholder="如 09-11" value="09-11"
+                            style="font-size: 13px; padding: 6px 10px; border-radius: 8px; border: none; background: rgba(255,255,255,0.15); color: white; width: 100%;"
+                            onchange="convertMyBirthday()">
+                        <small style="opacity: 0.6; font-size: 11px;">转换公历：<span id="myBirthdaySolar"></span></small>
                     </div>
                     <div>
-                        <small style="opacity: 0.8;">🎀 老婆的生日（农历转公历月-日）</small>
-                        <input type="text" id="herBirthday" value="09-27" placeholder="如 09-27"
-                            style="font-size: 13px; padding: 6px 10px; border-radius: 8px; border: none; background: rgba(255,255,255,0.15); color: white; width: 100%;">
+                        <small style="opacity: 0.8;">🎀 老婆生日（农历月份-日期）</small>
+                        <input type="text" id="herBirthdayLunar" placeholder="如 07-27" value="07-27"
+                            style="font-size: 13px; padding: 6px 10px; border-radius: 8px; border: none; background: rgba(255,255,255,0.15); color: white; width: 100%;"
+                            onchange="convertHerBirthday()">
+                        <small style="opacity: 0.6; font-size: 11px;">转换公历：<span id="herBirthdaySolar"></span></small>
                     </div>
                 </div>
                 <div style="margin-top: 8px;">
-                    <small style="opacity: 0.8;">💑 在一起纪念日（YYYY-MM-DD）</small>
-                    <input type="text" id="anniversary" value="2025-08-20" placeholder="如 2025-08-20"
+                    <small style="opacity: 0.8;">💑 在一起纪念日（YYYY-MM-DD，阳历）</small>
+                    <input type="text" id="anniversary" placeholder="如 2025-08-20" value="2025-08-20"
                         style="font-size: 13px; padding: 6px 10px; border-radius: 8px; border: none; background: rgba(255,255,255,0.15); color: white; width: 100%;">
                 </div>
             </div>
@@ -803,6 +807,103 @@
 
         let reminderTimer = null;
         let lastCheckedDate = null;
+
+        // ======== 农历转公历函数 ========
+        // 农历月份天数表（平年）
+        const LUNAR_MONTH_DAYS = [29, 30, 29, 30, 29, 30, 29, 30, 29, 30, 29, 30];
+        // 农历闰月表（0表示无闰月，1-12表示闰几月）
+        const LUNAR_LEAP_MONTH = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]; // 简化版，无闰月
+
+        // 农历日期转换为公历日期（以2025年为基准年计算近似值）
+        function lunarToSolar(lunarMonth, lunarDay, referenceYear = 2025) {
+            // 简化算法：以2025年农历新年为基准进行推算
+            // 2025年农历新年是公历1月29日
+            const springFestivalDay = 29; // 1月29日
+
+            // 计算从农历新年到目标日期的累计天数
+            let daysFromSpring = 0;
+            for (let m = 1; m < lunarMonth; m++) {
+                daysFromSpring += LUNAR_MONTH_DAYS[m - 1] || 30;
+            }
+            daysFromSpring += lunarDay - 1;
+
+            // 加上农历新年的公历日期
+            const springDate = new Date(referenceYear, 0, springFestivalDay);
+            const targetDate = new Date(springDate.getTime() + daysFromSpring * 24 * 60 * 60 * 1000);
+
+            return targetDate;
+        }
+
+        // 农历转公历并返回 MM-DD 格式字符串
+        function convertLunarToSolarDisplay(lunarValue) {
+            const match = lunarValue.match(/^(\d{1,2})-(\d{1,2})$/);
+            if (!match) return lunarValue;
+            const month = parseInt(match[1]);
+            const day = parseInt(match[2]);
+            const year = new Date().getFullYear();
+            const solar = lunarToSolar(month, day, year);
+            return `${(solar.getMonth() + 1).toString().padStart(2, '0')}-${solar.getDate().toString().padStart(2, '0')}`;
+        }
+
+        // 转换老公生日（农历转公历）
+        function convertMyBirthday() {
+            const input = document.getElementById('myBirthdayLunar').value.trim();
+            const match = input.match(/^(\d{1,2})-(\d{1,2})$/);
+            if (!match) {
+                document.getElementById('myBirthdaySolar').textContent = '格式错误';
+                return;
+            }
+            const month = parseInt(match[1]);
+            const day = parseInt(match[2]);
+            if (month < 1 || month > 12 || day < 1 || day > 30) {
+                document.getElementById('myBirthdaySolar').textContent = '日期无效';
+                return;
+            }
+
+            // 获取今年作为参考年
+            const year = new Date().getFullYear();
+            const solar = lunarToSolar(month, day, year);
+            const solarMonth = solar.getMonth() + 1;
+            const solarDay = solar.getDate();
+            const display = `${solarMonth.toString().padStart(2, '0')}-${solarDay.toString().padStart(2, '0')}`;
+            document.getElementById('myBirthdaySolar').textContent = display;
+
+            // 同步更新隐藏的 myBirthday 字段（如果有的话，这里直接更新 specialDates）
+            const myBirthdayInput = document.getElementById('myBirthday');
+            if (myBirthdayInput) {
+                myBirthdayInput.value = display;
+            }
+        }
+
+        // 转换老婆生日（农历转公历）
+        function convertHerBirthday() {
+            const input = document.getElementById('herBirthdayLunar').value.trim();
+            const match = input.match(/^(\d{1,2})-(\d{1,2})$/);
+            if (!match) {
+                document.getElementById('herBirthdaySolar').textContent = '格式错误';
+                return;
+            }
+            const month = parseInt(match[1]);
+            const day = parseInt(match[2]);
+            if (month < 1 || month > 12 || day < 1 || day > 30) {
+                document.getElementById('herBirthdaySolar').textContent = '日期无效';
+                return;
+            }
+
+            // 获取今年作为参考年
+            const year = new Date().getFullYear();
+            const solar = lunarToSolar(month, day, year);
+            const solarMonth = solar.getMonth() + 1;
+            const solarDay = solar.getDate();
+            const display = `${solarMonth.toString().padStart(2, '0')}-${solarDay.toString().padStart(2, '0')}`;
+            document.getElementById('herBirthdaySolar').textContent = display;
+
+            // 同步更新隐藏的 herBirthday 字段
+            const herBirthdayInput = document.getElementById('herBirthday');
+            if (herBirthdayInput) {
+                herBirthdayInput.value = display;
+            }
+        }
 
         // 初始化河南省城市下拉框
         // 初始化省份下拉框
@@ -1053,9 +1154,12 @@
 
                 // 恢复特殊日期
                 if (config.specialDates) {
-                    document.getElementById('myBirthday').value = config.specialDates.myBirthday || '10-23';
-                    document.getElementById('herBirthday').value = config.specialDates.herBirthday || '09-27';
+                    document.getElementById('myBirthdayLunar').value = config.specialDates.myBirthdayLunar || '09-11';
+                    document.getElementById('herBirthdayLunar').value = config.specialDates.herBirthdayLunar || '07-27';
                     document.getElementById('anniversary').value = config.specialDates.anniversary || '2025-08-20';
+                    // 触发农历转公历显示
+                    convertMyBirthday();
+                    convertHerBirthday();
                 }
             }
         }
@@ -1131,11 +1235,21 @@
                 }
             }
 
-            // 收集特殊日期
+            // 收集特殊日期（农历生日 + 纪念日）
+            const myLunar = document.getElementById('myBirthdayLunar').value.trim() || '09-11';
+            const herLunar = document.getElementById('herBirthdayLunar').value.trim() || '07-27';
+            const ann = document.getElementById('anniversary').value.trim() || '2025-08-20';
+
+            // 农历转公历计算
+            const mySolar = convertLunarToSolarDisplay(myLunar);
+            const herSolar = convertLunarToSolarDisplay(herLunar);
+
             config.specialDates = {
-                myBirthday: document.getElementById('myBirthday').value.trim() || '10-23',
-                herBirthday: document.getElementById('herBirthday').value.trim() || '09-27',
-                anniversary: document.getElementById('anniversary').value.trim() || '2025-08-20'
+                myBirthdayLunar: myLunar,
+                myBirthday: mySolar,  // 公历月-日（用于倒计时计算）
+                herBirthdayLunar: herLunar,
+                herBirthday: herSolar,  // 公历月-日（用于倒计时计算）
+                anniversary: ann
             };
 
             localStorage.setItem('punchReminderConfig', JSON.stringify(config));
