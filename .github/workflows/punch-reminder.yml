@@ -31,7 +31,6 @@ jobs:
         uses: actions/checkout@v4
 
       - name: 读取配置文件
-        id: config
         run: |
           echo "📖 读取配置文件..."
           if [ -f "config.json" ]; then
@@ -50,9 +49,6 @@ jobs:
 
       - name: 判断并推送
         env:
-          # 从 config.json 读取配置
-          TITLE: ${{ fromJson(steps.config.outputs.config).title || '打卡提醒' }}
-          LOCATION_ID: ${{ fromJson(steps.config.outputs.config).locationId || '101181502' }}
           PUSH_URL: https://apricity178.vercel.app/api/cron
         run: |
           # 读取 config.json
