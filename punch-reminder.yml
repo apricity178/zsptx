@@ -2,25 +2,67 @@ name: 打卡提醒推送
 
 on:
   schedule:
-  - cron: '0 0 * * 1-5'  # 北京时间 08:00（工作日）
-  - cron: '0 10 * * 1-5'  # 北京时间 18:00（工作日）
-  workflow_dispatch:  # 允许手动触发
+    - cron: '0 0 * * *'    # 北京时间 08:00（UTC+8）
+    - cron: '55 11 * * *'  # 北京时间 19:55（UTC+8）下班前提醒
+  workflow_dispatch:    # 允许手动触发
+    inputs:
+      type:
+        description: '强制指定推送类型'
+        required: false
+        default: 'auto'
+        type: choice
+        options:
+          - auto
+          - morning
+          - evening
 
 jobs:
-  push-reminder:
+  push:
     runs-on: ubuntu-latest
     steps:
-      - name: 上班提醒
-        if: ${{ contains(fromJSON('["8","9","10","11"]'), format('{0}', github.event.schedule && fromJSON('{}') || 0)) }}
+      - name: 判断并推送
+        env:
+          TOKENS: ${{ secrets.PUSHPLUS_TOKENS }}
+          LOCATION_ID: ${{ secrets.QWEATHER_LOCATION_ID }}
+          TITLE: 打卡提醒
         run: |
-          curl -sf "https://serverless-function-xcm3.vercel.app/api/cron?tokens=7960eaf5cb564505a9b545f7ffbbb448%2Cf41a4997eb8048e0ad0e092b8b69f7b8&title=%E6%89%93%E5%8D%A1%E6%8F%90%E9%86%92&forceType=morning&locationId=101181502&morningContent=%25E5%25AE%259D%25E8%25B4%259D%25EF%25BC%258C%25E6%2597%25A9%25E4%25B8%258A%25E5%25A5%25BD%25E5%2591%2580%7E%2520%25E2%2598%2580%25EF%25B8%258F%250A%25E8%25AE%25B0%25E5%25BE%2597%25E6%2589%2593%25E5%258D%25A1%25E4%25B8%258A%25E7%258F%25AD%25E5%2593%25A6%25EF%25BC%258C%25E6%2596%25B0%25E7%259A%2584%25E4%25B8%2580%25E5%25A4%25A9%25E5%258A%25A0%25E6%25B2%25B9%25EF%25BC%2581%250A%25E6%2588%2591%25E4%25BC%259A%25E4%25B8%2580%25E7%259B%25B4%25E6%2583%25B3%25E4%25BD%25A0%25E7%259A%2584%7E%2520%25F0%259F%2592%2595"
+          # ---- 1. 确定推送类型 ----
+          TYPE="${{ github.event.inputs.type }}"
 
-      - name: 下班提醒
-        run: |
-          # 根据北京时间判断上班/下班（直接用 forceType 或不传让服务端自动判断）
-          HOUR=$(TZ=Asia/Shanghai date +%H)
-          if [ "$HOUR" -lt 12 ]; then
-            curl -sf "https://serverless-function-xcm3.vercel.app/api/cron?tokens=7960eaf5cb564505a9b545f7ffbbb448%2Cf41a4997eb8048e0ad0e092b8b69f7b8&title=%E6%89%93%E5%8D%A1%E6%8F%90%E9%86%92&forceType=morning&locationId=101181502&morningContent=%25E5%25AE%259D%25E8%25B4%259D%25EF%25BC%258C%25E6%2597%25A9%25E4%25B8%258A%25E5%25A5%25BD%25E5%2591%2580%7E%2520%25E2%2598%2580%25EF%25B8%258F%250A%25E8%25AE%25B0%25E5%25BE%2597%25E6%2589%2593%25E5%258D%25A1%25E4%25B8%258A%25E7%258F%25AD%25E5%2593%25A6%25EF%25BC%258C%25E6%2596%25B0%25E7%259A%2584%25E4%25B8%2580%25E5%25A4%25A9%25E5%258A%25A0%25E6%25B2%25B9%25EF%25BC%2581%250A%25E6%2588%2591%25E4%25BC%259A%25E4%25B8%2580%25E7%259B%25B4%25E6%2583%25B3%25E4%25BD%25A0%25E7%259A%2584%7E%2520%25F0%259F%2592%2595"
+          if [ "$TYPE" = "auto" ] || [ -z "$TYPE" ]; then
+            HOUR=$(TZ=Asia/Shanghai date +%H)
+            echo "北京时间: $(TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M:%S')"
+            if [ "$HOUR" -lt 12 ]; then
+              TYPE="morning"
+            else
+              TYPE="evening"
+            fi
+          fi
+
+          echo ">>> 本次推送类型: $TYPE <<"
+
+          # ---- 2. 构造推送 URL ----
+          BASE="https://apricity178.vercel.app/api/cron"
+          URL="${BASE}?tokens=${TOKENS}&title=${TITLE}&forceType=${TYPE}&locationId=${LOCATION_ID}"
+          URL="${URL}&specialDatesJson=%7B%22myBirthday%22%3A%2210-23%22%2C%22herBirthday%22%3A%2209-27%22%2C%22anniversary%22%3A%222025-08-20%22%7D"
+
+          # ---- 3. 执行推送 ----
+          echo "请求: $BASE （类型: $TYPE）"
+          RESPONSE=$(curl -sf "$URL" || echo "CURL_ERROR")
+
+          if [ "$RESPONSE" = "CURL_ERROR" ]; then
+            echo "❌ 推送请求失败（网络错误或 API 不可达）"
+            exit 1
+          fi
+
+          echo "响应: $RESPONSE"
+
+          if echo "$RESPONSE" | grep -q '"code":200'; then
+            echo "✅ 推送成功！"
+          elif echo "$RESPONSE" | grep -q '"code":0'; then
+            echo "✅ 推送成功（code:0）！"
           else
-            curl -sf "https://serverless-function-xcm3.vercel.app/api/cron?tokens=7960eaf5cb564505a9b545f7ffbbb448%2Cf41a4997eb8048e0ad0e092b8b69f7b8&title=%E6%89%93%E5%8D%A1%E6%8F%90%E9%86%92&forceType=evening&locationId=101181502&eveningContent=%25E5%25AE%259D%25E8%25B4%259D%25EF%25BC%258C%25E4%25B8%258B%25E7%258F%25AD%25E6%2597%25B6%25E9%2597%25B4%25E5%2588%25B0%25E5%2595%25A6%7E%2520%25F0%259F%258C%2599%250A%25E8%25AE%25B0%25E5%25BE%2597%25E6%2589%2593%25E5%258D%25A1%25E4%25B8%258B%25E7%258F%25AD%25EF%25BC%258C%25E4%25BB%258A%25E5%25A4%25A9%25E8%25BE%259B%25E8%258B%25A6%25E4%25BA%2586%25EF%25BC%2581%250A%25E5%259B%259E%25E5%25AE%25B6%25E5%25A5%25BD%25E5%25A5%25BD%25E4%25BC%2591%25E6%2581%25AF%25EF%25BC%258C%25E6%2588%2591%25E5%259C%25A8%25E7%25AD%2589%25E4%25BD%25A0%7E%2520%25F0%259F%2592%2596"
+            echo "❌ 推送失败，响应异常"
+            echo "$RESPONSE"
+            exit 1
           fi
