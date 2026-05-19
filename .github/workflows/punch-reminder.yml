@@ -2,10 +2,10 @@ name: 打卡提醒推送
 
 on:
   schedule:
-    # 上班时间 (北京时间) - 由 config.json 配置
-    - cron: '0 8 * * *'
-    # 下班时间 (北京时间) - 由 config.json 配置
-    - cron: '55 19 * * *'
+    # 上班时间 (北京时间) - 07:55
+    - cron: '55 23 * * *'
+    # 下班时间 (北京时间) - 17:55
+    - cron: '55 9 * * *'
   workflow_dispatch:
     inputs:
       type:
@@ -17,11 +17,6 @@ on:
           - auto
           - morning
           - evening
-      test_push:
-        description: '测试推送'
-        required: false
-        default: 'false'
-        type: boolean
 
 jobs:
   push:
@@ -35,11 +30,10 @@ jobs:
           echo "📖 读取配置文件..."
           if [ -f "config.json" ]; then
             echo "✅ config.json 存在"
-            # 输出配置信息（不包含敏感数据）
             cat config.json | jq -r '
               "标题: \(.title)",
               "上班时间: \(.morningTime)",
-              "下班时间: \((.eveningTime // .morningTime)),",
+              "下班时间: \((.eveningTime // .morningTime))",
               "位置ID: \(.locationId)"
             '
           else

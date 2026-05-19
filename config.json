@@ -5,8 +5,10 @@
   "morningContent": "",
   "eveningContent": "",
   "specialDates": {
-    "myBirthday": "10-23",
-    "herBirthday": "09-27",
+    "myBirthdayLunar": "09-11",
+    "myBirthday": "10-02",
+    "herBirthdayLunar": "06-18",
+    "herBirthday": "07-12",
     "anniversary": "2025-08-20"
   },
   "locationId": "101181502",
